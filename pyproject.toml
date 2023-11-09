@@ -1,9 +1,136 @@
 [build-system]
-requires = ["jupyter_packaging~=0.7.0", "jupyterlab>=3.0.0rc4,==3.*", "setuptools>=40.8.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = [
+    "hatchling",
+    "jupyterlab==4.0.8",
+]
+build-backend = "hatchling.build"
 
+[project]
+name = "ipycytoscape"
+description = "A Cytoscape widget for Jupyter"
+readme = "README.md"
+authors = [
+    { name = "Mariana Meireles", email = "mariana.meireles@quantstack.net" },
+]
+keywords = [
+    "IPython",
+    "Jupyter",
+    "Widgets",
+]
+classifiers = [
+    "Framework :: Jupyter",
+    "Framework :: Jupyter :: JupyterLab",
+    "Framework :: Jupyter :: JupyterLab :: 2",
+    "Framework :: Jupyter :: JupyterLab :: 3",
+    "Framework :: Jupyter :: JupyterLab :: Extensions",
+    "Framework :: Jupyter :: JupyterLab :: Extensions :: Prebuilt",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.4",
+    "Programming Language :: Python :: 3.5",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+]
+dependencies = [
+    "ipywidgets>=7.6.0",
+    "spectate>=1.0.0",
+]
+version = "1.3.3"
+
+[project.license]
+file = "LICENSE"
+
+[project.optional-dependencies]
+docs = [
+    "jupyter-sphinx>=0.3.1",
+    "nbsphinx",
+    "nbsphinx-link",
+    "networkx",
+    "pandas",
+    "sphinx",
+    "sphinx-autobuild>=2020.9.1",
+    "sphinx-copybutton",
+    "sphinx_rtd_theme",
+]
+test = [
+    "black==22.3.0",
+    "flake8-typing-imports>=1.7.0",
+    "flake8>=4.0.1",
+    "nbclassic>=0.2.8",
+    "nbval",
+    "networkx",
+    "pandas",
+    "pre-commit",
+    "pytest-cov",
+    "pytest>4.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/cytoscape/ipycytoscape"
+
+[tool.hatch.build]
+artifacts = [
+    "ipycytoscape/nbextension/static/*",
+    "ipycytoscape/labextension/*",
+    "ipycytoscape/labextension",
+]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"ipycytoscape/nbextension/static" = "share/jupyter/nbextensions/jupyter-cytoscape"
+"ipycytoscape/labextension" = "share/jupyter/labextensions/jupyter-cytoscape"
+"./jupyter-cytoscape.json" = "etc/jupyter/nbconfig/notebook.d/jupyter-cytoscape.json"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".github",
+]
+
+[tool.hatch.build.hooks.jupyter-builder]
+ensured-targets = [
+    "ipycytoscape/nbextension/static/index.js",
+    "lib/plugin.js",
+]
+dependencies = [
+    "hatch-jupyter-builder>=0.8.3",
+]
+build-function = "hatch_jupyter_builder.npm_builder"
+install-pre-commit = true
+
+[tool.hatch.build.hooks.jupyter-builder.build-kwargs]
+path = "."
+build_cmd = "build:prod"
 
 [tool.isort]
 profile = "black"
 src_paths = "ipycytoscape"
 multi_line_output = 3
+
+[tool.tbump]
+field = [
+    { name = "channel", default = "" },
+    { name = "release", default = "" },
+]
+
+[tool.tbump.version]
+current = "1.3.3"
+regex = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)((?P<channel>a|b|rc|.dev)(?P<release>\\d+))?"
+
+[tool.tbump.git]
+message_template = "Bump to {new_version}"
+tag_template = "v{new_version}"
+
+[[tool.tbump.file]]
+src = "pyproject.toml"
+version_template = "version = \"{major}.{minor}.{patch}{channel}{release}\""
+
+[[tool.tbump.file]]
+src = "ipycytoscape/_version.py"
+
+[[tool.tbump.file]]
+src = "package.json"
+version_template = "\"version\": \"{major}.{minor}.{patch}{channel}{release}\""

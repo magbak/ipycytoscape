@@ -190,6 +190,8 @@ export class CytoscapeView extends DOMWidgetView {
   }
 
   private _updateViewLists() {
+    console.log(this.model.get('graph').get('nodes'))
+    console.log(this.model.get('graph').get('edges'))
     this.nodeViews.update(this.model.get('graph').get('nodes'));
     this.edgeViews.update(this.model.get('graph').get('edges'));
     this.cytoscape_obj
@@ -265,37 +267,6 @@ export class CytoscapeView extends DOMWidgetView {
       // added before the graph was displayed.
       // const monitored = this.model.get('monitored');
       this.listenForUserEvents();
-
-      this.cytoscape_obj.on('click', (e: any) => {
-        const node = e.target;
-        const ref = node.popperRef();
-        const dummyDomEle = document.createElement('div');
-
-        const tooltip_source = this.model.get('tooltip_source');
-        if (node.data()[tooltip_source]) {
-          const tip = Tippy(dummyDomEle, {
-            //TODO: add a pretty tippy
-            trigger: 'manual',
-            lazy: false,
-            arrow: true,
-            theme: 'material',
-            placement: 'bottom',
-            content: () => {
-              const content = document.createElement('div');
-              content.innerHTML = node
-                .data()
-                [tooltip_source].replace(/(?:\r\n|\r|\n)/g, '<br>');
-              return content;
-            },
-            onCreate: (instance: Instance | undefined) => {
-              if (instance && instance.popperInstance) {
-                instance.popperInstance.reference = ref;
-              }
-            },
-          });
-          tip.show();
-        }
-      });
     }
   }
   private _updateMinZoom() {
