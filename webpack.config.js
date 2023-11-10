@@ -30,7 +30,21 @@ module.exports = [
       path: path.resolve(__dirname, 'ipycytoscape', 'nbextension', 'static'),
       libraryTarget: 'amd',
       publicPath: '',
-      clean: false
+    },
+    module: {
+      rules: rules
+    },
+    devtool: 'source-map',
+    externals,
+    resolve,
+  },
+    {
+    entry: './src/extension_pointer.js',
+    output: {
+      filename: 'extension.js',
+      path: path.resolve(__dirname, 'ipycytoscape', 'nbextension', 'static'),
+      libraryTarget: 'amd',
+      publicPath: '',
     },
     module: {
       rules: rules

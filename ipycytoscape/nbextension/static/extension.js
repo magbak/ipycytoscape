@@ -1,17 +1,2 @@
-// Entry point for the notebook bundle containing custom model definitions.
-//
-define(function() {
-    "use strict";
-
-    window['requirejs'].config({
-        map: {
-            '*': {
-                'jupyter-cytoscape': 'nbextensions/jupyter-cytoscape/index',
-            },
-        }
-    });
-    // Export the required load_ipython_extension function
-    return {
-        load_ipython_extension : function() {}
-    };
-});
+define((()=>{return e={95:(e,r,t)=>{var n;void 0===(n=function(){"use strict";return window.requirejs.config({map:{"*":{"jupyter-cytoscape":"nbextensions/jupyter-cytoscape/index"}}}),{load_ipython_extension:function(){}}}.call(r,t,r,e))||(e.exports=n)}},r={},function t(n){var o=r[n];if(void 0!==o)return o.exports;var i=r[n]={exports:{}};return e[n](i,i.exports,t),i.exports}(95);var e,r}));
+//# sourceMappingURL=extension.js.map

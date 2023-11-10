@@ -28,23 +28,6 @@ from traitlets import (
 
 from ._frontend import module_name, module_version
 
-try:
-    import networkx as nx
-except ModuleNotFoundError:
-    nx = None
-
-try:
-    import pandas as pd
-
-except ModuleNotFoundError:
-    pd = None
-
-try:
-    import py2neo
-
-except ModuleNotFoundError:
-    py2neo = None
-
 """TODO: Remove this after this is somewhat done"""
 import logging
 
@@ -93,7 +76,6 @@ MONITORED_USER_INTERACTIONS = (
     "boxselect",  # triggered on elements when selected by box selection
     "box",  # triggered on elements when inside the box on boxend
 )
-
 
 class CytoInteractionDict(Dict):
     """A trait for specifying cytoscape.js user interactions."""
@@ -293,7 +275,6 @@ class Graph(Widget):
         node : ipycytoscape.Node
         """
         try:
-            self.nodes.remove(node)
             for target in list(self._adj[node.data["id"]]):
                 self.remove_edge_by_id(node.data["id"], target)
             for source in list(self._adj):
@@ -301,6 +282,7 @@ class Graph(Widget):
                     if target == node.data["id"]:
                         self.remove_edge_by_id(source, node.data["id"])
             del self._adj[node.data["id"]]
+            self.nodes.remove(node)
         except ValueError:
             raise ValueError(f'{node.data["id"]} is not present in the graph.')
 
@@ -465,313 +447,6 @@ class Graph(Widget):
         self.edges.clear()
         self._adj.clear()
 
-    def add_graph_from_networkx(self, g, directed=None, multiple_edges=None):
-        """
-        Converts a NetworkX graph in to a Cytoscape graph.
-
-        Parameters
-        ----------
-        g : networkx graph
-            receives a generic NetworkX graph. more info in
-            https://networkx.github.io/documentation/
-        directed : bool
-            If true all edges will be given directed as class if
-            they do not already have it. Equivalent to adding
-            'directed' to the 'classes' attribute of edge.data for all edges
-        """
-        # override type infering if directed is provided by the user
-        if isinstance(g, nx.DiGraph) and directed is None:
-            directed = True
-        # override type infering if multiple_edges is provided by the user
-        if isinstance(g, nx.MultiGraph) and multiple_edges is None:
-            multiple_edges = True
-
-        node_list = list()
-        for node, data in g.nodes(data=True):
-            if issubclass(type(node), Node):
-                node_instance = node
-            else:
-                node_instance = Node()
-                _set_attributes(node_instance, data)
-                if "id" not in data:
-                    node_instance.data["id"] = str(node)
-            node_list.append(node_instance)
-        self.add_nodes(node_list)
-
-        edge_list = list()
-        for source, target, data in g.edges(data=True):
-            edge_instance = Edge()
-
-            if issubclass(type(source), Node):
-                edge_instance.data["source"] = source.data["id"]
-            else:
-                edge_instance.data["source"] = str(source)
-
-            if issubclass(type(target), Node):
-                edge_instance.data["target"] = target.data["id"]
-            else:
-                edge_instance.data["target"] = str(target)
-
-            _set_attributes(edge_instance, data)
-
-            if directed and "directed" not in edge_instance.classes:
-                edge_instance.classes += " directed "
-            if multiple_edges and "multiple_edges" not in edge_instance.classes:
-                edge_instance.classes += " multiple_edges "
-            edge_list.append(edge_instance)
-        self.add_edges(edge_list, directed, multiple_edges)
-
-    def add_graph_from_json(self, json_file, directed=False, multiple_edges=False):
-        """
-        Converts a JSON Cytoscape graph in to a ipycytoscape graph.
-        (This method only allows the conversion from a JSON that's already
-        formatted as a Cytoscape graph).
-
-        Parameters
-        ----------
-        json_file : dict or string
-            If a dict is passed, it will be parsed as a JSON object,
-            a file path (to the json graph file) can also be passed as a
-            string, the file will be loaded it's content parsed as JSON an
-            object.
-        directed : bool
-            If True all edges will be given 'directed' as a class if
-            they do not already have it.
-        """
-        if path.isfile(str(json_file)):
-            with open(json_file) as f:
-                json_file = json.load(f)
-
-        node_list = list()
-        for node in json_file["nodes"]:
-            node_instance = Node()
-            _set_attributes(node_instance, node)
-            node_list.append(node_instance)
-        self.add_nodes(node_list)
-        edge_list = list()
-        if "edges" in json_file:
-            for edge in json_file["edges"]:
-                edge_instance = Edge()
-                _set_attributes(edge_instance, edge)
-                if directed and "directed" not in edge_instance.classes:
-                    edge_instance.classes += " directed "
-                if multiple_edges and "multiple_edges" not in edge_instance.classes:
-                    edge_instance.classes += " multiple_edges "
-                edge_list.append(edge_instance)
-            self.add_edges(edge_list, directed, multiple_edges)
-
-    def add_graph_from_df(
-        self,
-        df,
-        groupby_cols,
-        attribute_list=[],
-        edges=tuple(),
-        directed=False,
-        multiple_edges=False,
-    ):
-        """
-        Converts any Pandas DataFrame in to a Cytoscape graph.
-
-        Parameters
-        ----------
-        df : pandas dataframe
-        groupby_cols : list of str
-            List of dataframe columns
-        attribute_list : list of str
-            List of dataframe columns
-        edges : tuple of edges
-            The first item is the source edge and the second is the target edge
-        directed : bool
-            If True all edges will be given 'directed' as a class if
-            they do not already have it.
-        """
-        grouped = df.groupby(groupby_cols)
-        group_nodes = {}
-        for i, name in enumerate(grouped.groups):
-            if not isinstance(name, tuple):
-                name = (name,)
-            group_nodes[name] = Node(data={"id": f"parent-{i}", "name": name})
-
-        graph_nodes = []
-        graph_edges = []
-        for index, row in df.iterrows():
-            parent = group_nodes[tuple(row[groupby_cols])]
-
-            # Includes content to tips
-            tip_content = ""
-            for attribute in attribute_list:
-                tip_content += f"{attribute}: {row[attribute]}\n"
-
-            # Creates a list with all nodes adding them in the correct node parents
-            graph_nodes.append(
-                Node(
-                    data={"id": index, "parent": parent.data["id"], "name": tip_content}
-                )
-            )
-
-            if not all(edges):
-                # Creates a list with all nodes adding them in the correct node parents
-                graph_nodes.append(
-                    Node(
-                        data={
-                            "id": index,
-                            "parent": parent.data["id"],
-                            "name": tip_content,
-                        }
-                    )
-                )
-
-                if directed:
-                    classes = "directed "
-                else:
-                    classes = ""
-                graph_edges.append(
-                    Edge(
-                        data={
-                            "id": index,
-                            "source": edges[0],
-                            "target": edges[1],
-                            "classes": classes,
-                        }
-                    )
-                )
-
-        # Adds group nodes and regular nodes to the graph object
-        all_nodes = list(group_nodes.values()) + graph_nodes
-        self.add_edges(graph_edges, directed, multiple_edges)
-        self.add_nodes(all_nodes)
-
-    def add_graph_from_neo4j(self, g):
-        """
-        Converts a py2neo Neo4j subgraph into a Cytoscape graph. It also adds
-        a 'tooltip' node attribute to the Cytoscape graph if it is not present
-        in the Neo4j subgraph. This attribute can be set as a tooltip by
-        set_tooltip_source('tooltip'). The tooltip then displays the node
-        properties from the Neo4j nodes.
-
-        Parameters
-        ----------
-        g : py2neo Neo4j subgraph object
-            See https://py2neo.org/v4/data.html#subgraph-objects
-        """
-
-        def convert_types_to_string(node_attributes):
-            """
-            Converts types not compatible with cytoscape to strings.
-
-            Parameters
-            ----------
-            node_attributes : dictionary of node attributes
-            """
-            for k, v in node_attributes.items():
-                try:
-                    json.dumps(v)
-                except TypeError:
-                    node_attributes[k] = str(v)
-
-            return node_attributes
-
-        def get_node_labels_by_priority(g):
-            """
-            Returns a list of Neo4j node labels in priority order.
-            If a Neo4j node has multiple labels, the most distinctive
-            (least frequently occuring) label will appear first in this list.
-            Example: five nodes have the labels (Person|Actor) and five nodes
-            have the labels (Person|Director). In this case the Actor and Director
-            labels have priority over the Person label.
-
-            Parameters
-            ----------
-            g : py2neo Neo4j subgraph object
-                See https://py2neo.org/v4/data.html#subgraph-objects
-            """
-            counts = dict()
-
-            # This counts the number of instances that a node has a particular
-            # label (a node can have multiple labels in Neo4j).
-            # counts.get(label, 0) initializes the count with zero, and then
-            # increments the value if more of the same labels are encountered.
-            for node in g.nodes:
-                for label in node.labels:
-                    counts[label] = counts.get(label, 0) + 1
-
-            return sorted(counts, key=counts.get)
-
-        def create_tooltip(node_attributes, node_labels):
-            """
-            Returns a string of node labels and node attributes to be used as a tooltip.
-
-            Parameters
-            ----------
-            node_attributes : dictionary of node attributes
-            node_labels : list of node labels
-            """
-            labels = ",".join(label for label in node_labels)
-            attributes = "\n".join(k + ":" + str(v) for k, v in node_attributes.items())
-            return labels + "\n" + attributes
-
-        # select labels to be displayed as node labels
-        priority_labels = get_node_labels_by_priority(g)
-
-        # convert Neo4j nodes to cytoscape nodes
-        node_list = list()
-        for node in g.nodes:
-            node_attributes = dict(node)
-
-            # convert Neo4j specific types to string
-            node_attributes = convert_types_to_string(node_attributes)
-
-            # create tooltip text string
-            if "tooltip" not in node_attributes:
-                tooltip_text = create_tooltip(node_attributes, node.labels)
-                node_attributes["tooltip"] = tooltip_text
-
-            # assign unique id to node
-            node_attributes["id"] = node.identity
-
-            # assign class label with the highest priority
-            index = len(priority_labels)
-            for label in node.labels:
-                index = min(index, priority_labels.index(label))
-
-            node_attributes["label"] = priority_labels[index]
-
-            # create node
-            node_instance = Node()
-            _set_attributes(node_instance, node_attributes)
-            node_list.append(node_instance)
-
-        self.add_nodes(node_list)
-
-        # convert Neo4j relationships to cytoscape edges
-        edge_list = list()
-        for rel in g.relationships:
-            edge_instance = Edge()
-
-            # create dictionaries of relationship
-            rel_attributes = dict(rel)
-
-            # convert Neo4j specific types to string
-            rel_attributes = convert_types_to_string(rel_attributes)
-
-            # assign name of the relationship
-            if "name" not in rel_attributes:
-                rel_attributes["name"] = rel.__class__.__name__
-
-            # assign unique node ids
-            edge_instance.data["source"] = rel.start_node.identity
-            edge_instance.data["target"] = rel.end_node.identity
-            _set_attributes(edge_instance, rel_attributes)
-
-            edge_list.append(edge_instance)
-
-        # Neo4j graphs are directed and may have multiple edges
-        directed = True
-        multiple_edges = True
-
-        self.add_edges(edge_list, directed, multiple_edges)
-
-
 class CytoscapeWidget(DOMWidget):
     """Implements the main Cytoscape Widget"""
 
@@ -836,7 +511,7 @@ class CytoscapeWidget(DOMWidget):
             },
         ]
     ).tag(sync=True)
-    zoom = CFloat(2.0).tag(sync=True)
+    zoom = CFloat(1.0).tag(sync=True)
     rendered_position = Dict({"renderedPosition": {"x": 100, "y": 100}}).tag(sync=True)
     tooltip_source = Unicode("tooltip").tag(sync=True)
     _interaction_handlers = CytoInteractionDict({}).tag(
@@ -845,7 +520,7 @@ class CytoscapeWidget(DOMWidget):
 
     graph = Instance(Graph, args=tuple()).tag(sync=True, **widget_serialization)
 
-    def __init__(self, graph=None, **kwargs):
+    def __init__(self, **kwargs):
         """
         Initializes the graph widget.
 
@@ -861,16 +536,6 @@ class CytoscapeWidget(DOMWidget):
         self.on_msg(self._handle_interaction)
         self.graph = Graph()
 
-        if nx and isinstance(graph, nx.Graph):
-            self.graph.add_graph_from_networkx(graph)
-        elif isinstance(graph, (dict, str)):
-            self.graph.add_graph_from_json(graph)
-        elif pd and isinstance(graph, pd.DataFrame):
-            self.graph.add_graph_from_df(graph, **kwargs)
-        elif isinstance(graph, Graph):
-            self.graph = graph
-        elif py2neo and isinstance(graph, py2neo.Graph):
-            self.graph.add_graph_from_neo4j(graph)
 
     # Make sure we have a callback dispatcher for this widget and event type;
     # since _interaction_handlers is synced with the frontend and changes to

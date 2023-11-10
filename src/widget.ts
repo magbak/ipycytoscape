@@ -104,8 +104,8 @@ export class CytoscapeModel extends DOMWidgetModel {
 export class CytoscapeView extends DOMWidgetView {
   cytoscape_obj: Core;
   is_rendered = false;
-  nodeViews: any = [];
-  edgeViews: any = [];
+  nodeViewDict: any = {};
+  edgeViewDict: any = {};
   monitored: any = {};
 
   render() {
@@ -114,19 +114,8 @@ export class CytoscapeView extends DOMWidgetView {
     this.displayed.then(() => {
       this.init_render();
       this.cytoscape_obj.startBatch();
-      this.nodeViews = new widgets.ViewList(
-        this.addNodeModel,
-        this.removeNodeView,
-        this
-      );
-      this.nodeViews.update(this.model.get('graph').get('nodes'));
-
-      this.edgeViews = new widgets.ViewList(
-        this.addEdgeModel,
-        this.removeEdgeView,
-        this
-      );
-      this.edgeViews.update(this.model.get('graph').get('edges'));
+      this.update_node_view_dict(this.model.get('graph').get('nodes'));
+      this.update_edge_view_dict(this.model.get('graph').get('edges'));
       this.cytoscape_obj.endBatch();
       this.cytoscape_obj
         .elements()
@@ -136,7 +125,7 @@ export class CytoscapeView extends DOMWidgetView {
 
     this.model
       .get('graph')
-      .on_some_change(['nodes', 'edges'], this._updateViewLists, this);
+      .on_some_change(['nodes', 'edges'], this._updateViews, this);
 
     //Python attributes that must be sync. with frontend
     this.model.on('change:min_zoom', this._updateMinZoom, this);
@@ -145,18 +134,18 @@ export class CytoscapeView extends DOMWidgetView {
     this.model.on(
       'change:user_zooming_enabled',
       this._updateUserZoomingEnabled,
-      this
+      this,
     );
     this.model.on('change:panning_enabled', this._updatePanningEnabled, this);
     this.model.on(
       'change:user_panning_enabled',
       this._updateUserPanningEnabled,
-      this
+      this,
     );
     this.model.on(
       'change:box_selection_enabled',
       this._updateBoxSelectionEnabled,
-      this
+      this,
     );
     this.model.on('change:selection_type', this._updateSelectionType, this);
     this.model.on('change:touch_tap_threshold', this.value_changed, this);
@@ -171,7 +160,7 @@ export class CytoscapeView extends DOMWidgetView {
     this.model.on(
       'change:_interaction_handlers',
       this.listenForUserEvents,
-      this
+      this,
     );
 
     const layout = this.model.get('layout');
@@ -189,11 +178,12 @@ export class CytoscapeView extends DOMWidgetView {
     }
   }
 
-  private _updateViewLists() {
-    console.log(this.model.get('graph').get('nodes'))
-    console.log(this.model.get('graph').get('edges'))
-    this.nodeViews.update(this.model.get('graph').get('nodes'));
-    this.edgeViews.update(this.model.get('graph').get('edges'));
+  async _updateViews() {
+    console.log('Update view lists');
+    console.log(this.model.get('graph').get('nodes'));
+    console.log(this.model.get('graph').get('edges'));
+    this.update_node_view_dict(this.model.get('graph').get('nodes'));
+    this.update_edge_view_dict(this.model.get('graph').get('edges'));
     this.cytoscape_obj
       .elements()
       .layout(this.model.get('cytoscape_layout'))
@@ -280,7 +270,7 @@ export class CytoscapeView extends DOMWidgetView {
   }
   private _updateUserZoomingEnabled() {
     this.cytoscape_obj.userZoomingEnabled(
-      this.model.get('user_zooming_enabled')
+      this.model.get('user_zooming_enabled'),
     );
   }
   private _updatePanningEnabled() {
@@ -288,12 +278,12 @@ export class CytoscapeView extends DOMWidgetView {
   }
   private _updateUserPanningEnabled() {
     this.cytoscape_obj.userPanningEnabled(
-      this.model.get('user_panning_enabled')
+      this.model.get('user_panning_enabled'),
     );
   }
   private _updateBoxSelectionEnabled() {
     this.cytoscape_obj.boxSelectionEnabled(
-      this.model.get('box_selection_enabled')
+      this.model.get('box_selection_enabled'),
     );
   }
   private _updateSelectionType() {
@@ -328,7 +318,7 @@ export class CytoscapeView extends DOMWidgetView {
    */
   _addElementListeners(
     ele: cytoscape.CollectionReturnValue,
-    view: DOMWidgetView
+    view: DOMWidgetView,
   ) {
     ele.on('select', (event) => {
       view.model.set('selected', true);
@@ -344,7 +334,36 @@ export class CytoscapeView extends DOMWidgetView {
     });
   }
 
-  async addNodeModel(NodeModel: NodeModel) {
+  update_node_view_dict(nodes: any[]) {
+    const node_set = new Set();
+    let i = 0;
+    for (; i < nodes.length; i++) {
+      const node = nodes[i];
+      const id = node.get('data').id;
+      node_set.add(id);
+      if (!(node.get('data').id in this.nodeViewDict)) {
+        this.add_new_node(node);
+      }
+    }
+    const to_remove = [];
+    for (const key of Object.keys(this.nodeViewDict)) {
+      if (!node_set.has(key)) {
+        to_remove.push(key);
+      }
+    }
+    for (const key of to_remove) {
+      const e = this.nodeViewDict[key];
+      e.model.set('removed', true);
+      e.remove();
+      delete this.nodeViewDict[key];
+    }
+  }
+
+  async add_new_node(NodeModel: NodeModel) {
+    console.log('Add node model');
+    console.log(NodeModel.get('data').id);
+    const id = NodeModel.get('data').id;
+
     const node = this.cytoscape_obj.add(NodeModel.asCyObj());
     const child = await this.create_child_view(NodeModel, {
       cytoscapeView: this,
@@ -358,25 +377,48 @@ export class CytoscapeView extends DOMWidgetView {
       child.model.set('grabbed', false);
       child.model.save_changes();
     });
-    return child;
+    this.nodeViewDict[id] = child;
   }
 
-  removeNodeView(nodeView: any) {
-    nodeView.model.set('removed', true);
-    nodeView.remove();
+  update_edge_view_dict(edges: any[]) {
+    const edge_set = new Set();
+    let i = 0;
+    for (; i < edges.length; i++) {
+      const edge = edges[i];
+      const id = edge.get('data').id;
+      edge_set.add(id);
+      if (!(edge.get('data').id in this.edgeViewDict)) {
+        this.add_new_edge(edge);
+      }
+    }
+    const to_remove = [];
+    for (const key of Object.keys(this.edgeViewDict)) {
+      if (!edge_set.has(key)) {
+        to_remove.push(key);
+      }
+    }
+    for (const key of to_remove) {
+      const e = this.edgeViewDict[key];
+      e.model.set('removed', true);
+      e.remove();
+      delete this.edgeViewDict[key];
+    }
   }
 
-  async addEdgeModel(EdgeModel: EdgeModel) {
-    const edge = this.cytoscape_obj.add(EdgeModel.asCyObj());
-    const child = await this.create_child_view(EdgeModel, {
-      cytoscapeView: this,
-    });
-    this._addElementListeners(edge, child);
-    return child;
-  }
-
-  removeEdgeView(edgeView: any) {
-    edgeView.model.set('removed', true);
-    edgeView.remove();
+  async add_new_edge(EdgeModel: EdgeModel) {
+    console.log('Add edge model');
+    console.log(EdgeModel.get('data').id);
+    const id = EdgeModel.get('data').id;
+    if (!this.cytoscape_obj.hasElementWithId(id)) {
+      const edge = this.cytoscape_obj.add(EdgeModel.asCyObj());
+      console.log("Idsafter")
+      console.log(edge.id());
+      console.log(EdgeModel.get('data').id);
+      const child = await this.create_child_view(EdgeModel, {
+        cytoscapeView: this,
+      });
+      this._addElementListeners(edge, child);
+      this.edgeViewDict[id] = child;
+    }
   }
 }
